@@ -2,81 +2,72 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="VesselCore Golden System", layout="wide")
+# 1. إعدادات النظام
+st.set_page_config(page_title="VesselCore Database Engine", layout="wide")
 
-# --- قاعدة البيانات المصححة (بناءً على تقرير NJ MOON الأخير) ---
-DATABASE = {
-    "NJ MOON": {
-        "11/02/2026": {
-            "Location": "Lat: 27 44.52 N / Lon: 033 48.56 E", "Dist": 222.1, "Speed": 9.2,
-            "ME_FO": 22.0, "AE_DO": 0.0, "Cyl_LO": 140, "Gen_LO": 40,
-            "Exh_Temps": [337, 360, 355, 345, 335, 348], "ME_Load": 50, "LO_Press": 2.8, "RPM": 101
-        },
-        "10/02/2026": {
-            "Location": "At Anchorage", "Dist": 0.0, "Speed": 0.0,
-            "ME_FO": 0.0, "AE_DO": 7.0, "Cyl_LO": 58, "Gen_LO": 38,
-            "Exh_Temps": [280, 285, 282, 278, 280, 281], "ME_Load": 0, "LO_Press": 3.1, "RPM": 0
-        }
-    }
-}
+# 2. إنشاء "داتا المعلومات" (هذا الجزء سيبني تاريخ السفن)
+@st.cache_data
+def load_vessel_data():
+    # هنا نقوم ببناء قاعدة البيانات الحقيقية
+    data = [
+        # بيانات NJ MOON
+        ["NJ MOON", "2026-02-11", "Lat: 27.44N Lon: 33.48E", 222.1, 9.2, 50, 22.0, 0.0, 140, 40, 337, 360, 355, 345, 335, 348],
+        ["NJ MOON", "2026-02-10", "At Anchorage", 0.0, 0.0, 0, 0.0, 7.0, 58, 38, 280, 285, 282, 278, 280, 281],
+        # بيانات NJ MARS
+        ["NJ MARS", "2026-02-11", "In Port", 0.0, 0.0, 0, 0.0, 3.3, 0, 20, 0, 0, 0, 0, 0, 0],
+        ["NJ MARS", "2026-02-10", "In Port", 0.0, 0.0, 0, 0.0, 3.1, 0, 18, 0, 0, 0, 0, 0, 0],
+    ]
+    columns = [
+        "Vessel", "Date", "Location", "Dist", "Speed", "Load", 
+        "ME_FO", "AE_DO", "Cyl_LO", "Gen_LO", 
+        "C1", "C2", "C3", "C4", "C5", "C6"
+    ]
+    return pd.DataFrame(data, columns=columns)
 
-# --- القائمة الجانبية ---
-with st.sidebar:
-    st.title("🚢 VesselCore Technical")
-    st.write("**المدير التنفيذي:** مروان كروم")
-    ship = st.selectbox("اختر السفينة:", list(DATABASE.keys()))
-    dates = list(DATABASE[ship].keys())
+df_all = load_vessel_data()
 
-today = DATABASE[ship][dates[0]]
-yesterday = DATABASE[ship][dates[1]]
+# 3. واجهة التحكم (Sidebar)
+st.sidebar.title("🚢 VesselCore Database")
+st.sidebar.write("**Technical Director:** Marwan Karroum")
+selected_vessel = st.sidebar.selectbox("اختر السفينة لمراجعة الداتا:", df_all['Vessel'].unique())
 
-# --- الواجهة الرئيسية ---
-st.title(f"لوحة المراقبة الشاملة: {ship}")
-st.info(f"مقارنة Noon Report ليوم {dates[0]} مع اليوم السابق")
+# تصفية البيانات للسفينة المختارة
+vessel_df = df_all[df_all['Vessel'] == selected_vessel].sort_values(by="Date", ascending=False)
 
-# 1. قسم الملاحة والموقع
-st.subheader("🌐 الملاحة والسرعات")
-c1, c2, c3 = st.columns(3)
-c1.metric("المسافة المقطوعة", f"{today['Dist']} NM", f"{round(today['Dist'] - yesterday['Dist'], 1)} NM")
-c2.metric("السرعة المتوسطة", f"{today['Speed']} KTS", f"{round(today['Speed'] - yesterday['Speed'], 1)} KTS")
-c3.metric("دوران المحرك RPM", f"{today['RPM']}", f"{today['RPM'] - yesterday['RPM']}")
+if len(vessel_df) >= 2:
+    today = vessel_df.iloc[0]
+    yesterday = vessel_df.iloc[1]
+    
+    st.title(f"تحليل قاعدة البيانات: {selected_vessel}")
+    st.info(f"مقارنة آلية بين تقرير {today['Date']} والتقرير السابق {yesterday['Date']}")
 
-st.divider()
+    # 4. عرض المقارنات الشاملة (Deltas)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("المسافة المقطوعة", f"{today['Dist']} NM", f"{round(today['Dist']-yesterday['Dist'],1)} NM")
+    col2.metric("استهلاك ME FO", f"{today['ME_FO']} MT", f"{round(today['ME_FO']-yesterday['ME_FO'],1)} MT", delta_color="inverse")
+    col3.metric("ديزل المولدات AE DO", f"{today['AE_DO']} MT", f"{round(today['AE_DO']-yesterday['AE_DO'],1)} MT", delta_color="inverse")
+    col4.metric("زيت الأسطوانات Cyl LO", f"{today['Cyl_LO']} L", f"{today['Cyl_LO']-yesterday['Cyl_LO']} L", delta_color="inverse")
 
-# 2. استهلاك الوقود والزيوت (تصحيح المولدات)
-st.subheader("⛽ استهلاك الوقود والزيوت (ME & Generators)")
-f1, f2, l1, l2 = st.columns(4)
+    st.divider()
 
-with f1:
-    st.metric("Main Engine (FO)", f"{today['ME_FO']} MT", f"{round(today['ME_FO']-yesterday['ME_FO'], 1)} MT", delta_color="inverse")
-with f2:
-    st.metric("Generators (D.O)", f"{today['AE_DO']} MT", f"{round(today['AE_DO']-yesterday['AE_DO'], 1)} MT", delta_color="inverse")
-with l1:
-    st.metric("Cylinder Oil", f"{today['Cyl_LO']} L", f"{today['Cyl_LO']-yesterday['Cyl_LO']} L", delta_color="inverse")
-with l2:
-    st.metric("Generator Oil", f"{today['Gen_LO']} L", f"{today['Gen_LO']-yesterday['Gen_LO']} L", delta_color="inverse")
-
-st.divider()
-
-# 3. تحليل حرارة الحريق والضغوط
-st.subheader("🔥 درجات حرارة الحريق والاحتراق")
-col_chart, col_info = st.columns([2, 1])
-
-with col_chart:
+    # 5. تحليل حريق المحرك (Combustion Data)
+    st.subheader("🔥 مراقبة درجات حرارة الأسطوانات (MAN B&W / Mitsubishi)")
+    temps_today = [today['C1'], today['C2'], today['C3'], today['C4'], today['C5'], today['C6']]
+    temps_yesterday = [yesterday['C1'], yesterday['C2'], yesterday['C3'], yesterday['C4'], yesterday['C5'], yesterday['C6']]
+    
     fig = go.Figure()
-    cyls = [f"Cyl {i+1}" for i in range(6)]
-    fig.add_trace(go.Bar(x=cyls, y=today['Exh_Temps'], name='اليوم الحالي', marker_color='darkblue'))
-    fig.add_trace(go.Scatter(x=cyls, y=[365]*6, name='High Alarm Limit', line=dict(color='red', dash='dot')))
-    fig.update_layout(title="Exhaust Gas Temperatures (°C)", yaxis_range=[0, 450])
+    cyl_labels = [f"Cyl {i+1}" for i in range(6)]
+    fig.add_trace(go.Bar(x=cyl_labels, y=temps_today, name='Today', marker_color='darkred'))
+    fig.add_trace(go.Scatter(x=cyl_labels, y=temps_yesterday, name='Yesterday', line=dict(color='black', dash='dot')))
+    fig.update_layout(yaxis_title="Temp °C", barmode='group')
     st.plotly_chart(fig, use_container_width=True)
 
-with col_info:
-    st.write("**الضغوط والحرارات التشغيلية:**")
-    st.table(pd.DataFrame({
-        "المعلمة الفنية": ["L.O Inlet Press", "ME Load Indicator", "Scav. Air Press"],
-        "القيمة الحالية": [f"{today['LO_Press']} bar", f"{today['ME_Load']}%", "1.1 bar"],
-        "الحالة": ["Normal", "Stable", "Normal"]
-    }))
+    # 6. سجل البيانات التاريخي (The Log)
+    st.subheader("📋 السجل الفني التاريخي للسفينة")
+    st.dataframe(vessel_df, use_container_width=True)
+else:
+    st.warning("لا توجد بيانات كافية لإجراء المقارنة. يرجى إضافة تقارير Noon إضافية.")
 
-st.success("تم تحديث البيانات الذهبية بناءً على تقارير الـ Noon الحقيقية.")
+# 7. ميزة إضافة البيانات (تحت التطوير)
+with st.expander("➕ إضافة تقرير Noon جديد للقاعدة"):
+    st.write("يمكنك قريباً رفع ملف الـ Excel هنا لتحديث قاعدة البيانات تلقائياً.")
