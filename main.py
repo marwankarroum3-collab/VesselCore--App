@@ -1,84 +1,94 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import os
 
-# --- 1. إعدادات الصفحة ---
-st.set_page_config(page_title="VesselCore Fleet Management", layout="wide")
+# --- 1. إعداد قاعدة البيانات (Auto-CSV Database) ---
+# هذا الملف هو الذي سيخزن كل بياناتك اليومية
+DB_FILE = 'vesselcore_fleet_db.csv'
 
-# --- 2. قاعدة البيانات الحقيقية والمصححة (الأربع سفن) ---
-FLEET_DATABASE = {
-    "NJ MOON": {
-        "11/02/2026": {
-            "Loc": "Lat: 27.44.52 N / Lon: 033.48.56 E", "Dist": 222.1, "Speed": 9.2, "RPM": 101,
-            "ME_FO": 22.0, "AE_DO": 0.0, "Cyl_LO": 140, "Gen_LO": 40, "ME_Load": 50,
-            "LO_P": 2.8, "Exh": [337, 360, 355, 345, 335, 348], "Status": "At Sea"
-        },
-        "10/02/2026": {"Dist": 0.0, "Speed": 0.0, "RPM": 0, "ME_FO": 0.0, "AE_DO": 7.0, "Cyl_LO": 58, "Gen_LO": 38, "ME_Load": 0, "LO_P": 3.1, "Exh": [0,0,0,0,0,0], "Status": "Anchorage"}
-    },
-    "NJ MARS": {
-        "11/02/2026": {
-            "Loc": "Discharging Port", "Dist": 0.0, "Speed": 0.0, "RPM": 0,
-            "ME_FO": 0.0, "AE_DO": 3.3, "Cyl_LO": 0, "Gen_LO": 20, "ME_Load": 0,
-            "LO_P": 0.0, "Exh": [0,0,0,0,0,0], "Status": "Port Operations"
-        },
-        "10/02/2026": {"Dist": 0.0, "Speed": 0.0, "RPM": 0, "ME_FO": 0.0, "AE_DO": 3.1, "Cyl_LO": 0, "Gen_LO": 18, "ME_Load": 0, "LO_P": 0.0, "Exh": [0,0,0,0,0,0], "Status": "Port Operations"}
-    },
-    "NJ AIO": {
-        "11/02/2026": {
-            "Loc": "At Port - Loading", "Dist": 0.0, "Speed": 0.0, "RPM": 0,
-            "ME_FO": 0.0, "AE_DO": 1.1, "Cyl_LO": 0, "Gen_LO": 28, "ME_Load": 0,
-            "LO_P": 0.0, "Exh": [0,0,0,0,0,0], "Status": "Loading"
-        },
-        "10/02/2026": {"Dist": 0.0, "Speed": 0.0, "RPM": 0, "ME_FO": 0.0, "AE_DO": 0.8, "Cyl_LO": 0, "Gen_LO": 25, "ME_Load": 0, "LO_P": 0.0, "Exh": [0,0,0,0,0,0], "Status": "Loading"}
-    },
-    "YARA J": {
-        "11/02/2026": {
-            "Loc": "At Anchorage", "Dist": 0.0, "Speed": 0.0, "RPM": 0,
-            "ME_FO": 0.0, "AE_DO": 2.5, "Cyl_LO": 0, "Gen_LO": 22, "ME_Load": 0,
-            "LO_P": 0.0, "Exh": [0,0,0,0,0,0], "Status": "Anchorage"
-        },
-        "10/02/2026": {"Dist": 155.0, "Speed": 11.2, "RPM": 104, "ME_FO": 23.5, "AE_DO": 2.0, "Cyl_LO": 142, "Gen_LO": 36, "ME_Load": 75, "LO_P": 2.9, "Exh": [365, 370, 368, 372, 370, 368], "Status": "At Sea"}
-    }
-}
-
-# --- 3. واجهة التحكم ---
-st.sidebar.title("🚢 Fleet Control Center")
-ship = st.sidebar.selectbox("اختر السفينة:", list(FLEET_DATABASE.keys()))
-today = FLEET_DATABASE[ship]["11/02/2026"]
-yesterday = FLEET_DATABASE[ship]["10/02/2026"]
-
-st.title(f"التحليل الفني: {ship}")
-st.subheader(f"الحالة الحالية: {today['Status']}")
-
-# --- 4. المقاييس ---
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("المسافة (NM)", today['Dist'], f"{round(today['Dist']-yesterday['Dist'],1)}")
-c2.metric("دوران المحرك (RPM)", today['RPM'], f"{today['RPM']-yesterday['RPM']}")
-c3.metric("وقود المولدات AE DO", f"{today['AE_DO']} MT", f"{round(today['AE_DO']-yesterday['AE_DO'],1)}", delta_color="inverse")
-c4.metric("زيت المولدات Gen LO", f"{today['Gen_LO']} L", f"{today['Gen_LO']-yesterday['Gen_LO']}", delta_color="inverse")
-
-st.divider()
-
-# --- 5. تحليل الأداء ---
-col_graph, col_data = st.columns([2, 1])
-
-with col_graph:
-    if today['ME_Load'] > 0:
-        fig = go.Figure()
-        cyls = [f"Cyl {i+1}" for i in range(6)]
-        fig.add_trace(go.Bar(x=cyls, y=today['Exh'], marker_color='darkred'))
-        fig.update_layout(title="درجات حرارة احتراق الأسطوانات (°C)")
-        st.plotly_chart(fig, use_container_width=True)
+def load_data():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
     else:
-        st.info("⚠️ المحرك الرئيسي متوقف (ME Stopped) - السفينة في الميناء أو المخطاف.")
-        # عرض استهلاك المولدات كبديل
-        st.write("**استهلاك المولدات خلال 24 ساعة الماضية:**")
-        fig_ae = go.Figure(data=[go.Pie(labels=['AE Fuel', 'AE Oil'], values=[today['AE_DO']*100, today['Gen_LO']])])
-        st.plotly_chart(fig_ae)
+        # إنشاء هيكل البيانات إذا كان الملف غير موجود
+        columns = ['Date', 'Ship', 'Status', 'Loc', 'Dist', 'Speed', 'RPM', 'ME_FO', 'AE_DO', 'Cyl_LO', 'Gen_LO', 'Load', 'LO_P', 'Exh_Avg']
+        return pd.DataFrame(columns=columns)
 
-with col_data:
-    st.write("**بيانات التشغيل:**")
-    st.table(pd.DataFrame({
-        "Parameter": ["L.O Press", "ME Load %", "Location"],
-        "Value": [f"{today['LO_P']} bar", f"{today['ME_Load']}%", today['Loc']]
-    }))
+def save_data(df):
+    df.to_csv(DB_FILE, index=False)
+
+# --- 2. إعدادات الواجهة الاحترافية ---
+st.set_page_config(page_title="VesselCore Technical OS", layout="wide")
+st.markdown("<style>.stMetric {background-color: #1c2128; border: 1px solid #30363d; padding: 15px; border-radius: 10px;}</style>", unsafe_allow_html=True)
+
+df_fleet = load_data()
+
+# --- 3. بوابة إدخال البيانات اليومية (Data Entry Port) ---
+with st.sidebar:
+    st.title("🚢 إدخال البيانات اليومية")
+    with st.form("entry_form"):
+        u_date = st.date_input("تاريخ التقرير")
+        u_ship = st.selectbox("السفينة", ["NJ MOON", "NJ MARS", "NJ AIO", "YARA J"])
+        u_status = st.selectbox("الحالة", ["At Sea", "At Port", "Anchorage"])
+        u_loc = st.text_input("الموقع (Lat/Lon)")
+        
+        col_in1, col_in2 = st.columns(2)
+        u_speed = col_in1.number_input("السرعة (Kts)", 0.0)
+        u_rpm = col_in2.number_input("الـ RPM", 0)
+        
+        u_mefo = col_in1.number_input("وقود ME (MT)", 0.0)
+        u_aedo = col_in2.number_input("وقود AE (MT)", 0.0)
+        
+        u_cyl = col_in1.number_input("زيت Cyl (L)", 0)
+        u_gen = col_in2.number_input("زيت Gen (L)", 0)
+        
+        u_load = st.slider("حمل المحرك %", 0, 100)
+        u_exh = st.number_input("متوسط حرارة العادم", 0)
+        
+        submitted = st.form_submit_button("حفظ وإرسال للتحليل")
+        
+        if submitted:
+            new_row = {'Date': str(u_date), 'Ship': u_ship, 'Status': u_status, 'Loc': u_loc, 
+                       'Dist': 0.0, 'Speed': u_speed, 'RPM': u_rpm, 'ME_FO': u_mefo, 
+                       'AE_DO': u_aedo, 'Cyl_LO': u_cyl, 'Gen_LO': u_gen, 'Load': u_load, 
+                       'LO_P': 0.0, 'Exh_Avg': u_exh}
+            df_fleet = pd.concat([df_fleet, pd.DataFrame([new_row])], ignore_index=True)
+            save_data(df_fleet)
+            st.success(f"تم تسجيل بيانات {u_ship} بنجاح!")
+
+# --- 4. العرض والتحليل الهندسي (The Dashboard) ---
+st.title("📊 لوحة التحكم والتحليل الفني للأسطول")
+
+if not df_fleet.empty:
+    selected_ship = st.selectbox("اختر السفينة للعرض:", df_fleet['Ship'].unique())
+    ship_data = df_fleet[df_fleet['Ship'] == selected_ship].sort_values(by='Date')
+    
+    if not ship_data.empty:
+        latest = ship_data.iloc[-1]
+        
+        # عرض المقاييس الرئيسية
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("آخر سرعة مسجلة", f"{latest['Speed']} Kts")
+        m2.metric("استهلاك الوقود ME", f"{latest['ME_FO']} MT")
+        m3.metric("استهلاك الديزل AE", f"{latest['AE_DO']} MT")
+        m4.metric("زيت الأسطوانات", f"{latest['Cyl_LO']} L")
+
+        st.divider()
+
+        # رسم بياني لتحليل الاتجاه (Trends)
+        st.subheader(f"📈 تحليل استهلاك الوقود التاريخي - {selected_ship}")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ship_data['Date'], y=ship_data['ME_FO'], name="وقود ME", line=dict(color='#3498db', width=3)))
+        fig.add_trace(go.Scatter(x=ship_data['Date'], y=ship_data['AE_DO'], name="ديزل AE", line=dict(color='#e74c3c', width=3)))
+        fig.update_layout(template="plotly_dark", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # جدول البيانات التاريخي
+        with st.expander("📂 عرض سجل البيانات الكامل"):
+            st.write(ship_data)
+else:
+    st.info("مرحباً بك يا مروان. ابدأ بإدخال بيانات أول تقرير يومي من القائمة الجانبية.")
+
+st.sidebar.divider()
+st.sidebar.caption("CEO Access: Marwan Karroum")
