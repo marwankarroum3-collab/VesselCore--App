@@ -1,25 +1,44 @@
 
 import streamlit as st
+import pandas as pd
 import plotly.graph_objects as go
 
-# 1. إعداد الصفحة
+# 1. إعدادات الهوية الفنية
 st.set_page_config(page_title="VesselCore Technical", layout="wide")
 
-# 2. الأسماء الحقيقية للسفن
-fleet = ["NJ MOON", "NJ MARS", "NJ AIO", "YARA J"]
+# 2. تعريف أسطول NJ TRUST MARINE
+fleet_data = {
+    "NJ MOON": {"engine": "MAN B&W", "load": 85, "sfoc": 165},
+    "NJ MARS": {"engine": "MAN B&W", "load": 82, "sfoc": 168},
+    "NJ AIO": {"engine": "Mitsubishi UEC", "load": 80, "sfoc": 170},
+    "YARA J": {"engine": "MAN B&W", "load": 84, "sfoc": 166}
+}
 
-# 3. القائمة الجانبية
-st.sidebar.title("🚢 VesselCore")
-st.sidebar.write("المدير الفني: مروان كروم")
-selected_ship = st.sidebar.selectbox("اختر السفينة:", fleet, key="vessel_select")
+# 3. القائمة الجانبية (Sidebar)
+with st.sidebar:
+    st.header("🚢 إدارة الأسطول")
+    st.write("**المدير التقني:** مروان كروم")
+    st.divider()
+    selected_ship = st.selectbox("اختر السفينة للمراجعة:", list(fleet_data.keys()), key="vessel_select_final")
+    st.info(f"المحرك: {fleet_data[selected_ship]['engine']}")
 
-# 4. المحتوى الرئيسي
-st.title(f"لوحة التحكم: {selected_ship}")
-st.write(f"تحليل الأداء الفني لسفينة {selected_ship} تتبع شركة NJ TRUST MARINE")
+# 4. لوحة التحكم الرئيسية
+st.title(f"التحليل الفني: {selected_ship}")
 
-# 5. رسم بياني بسيط للتجربة
-fig = go.Figure(data=[go.Bar(x=fleet, y=[85, 82, 90, 88])])
-fig.update_layout(title="حمل المحرك الحالي (%)")
+# عرض المؤشرات (Metrics)
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("حمل المحرك (Load %)", f"{fleet_data[selected_ship]['load']}%")
+with col2:
+    st.metric("استهلاك الوقود (SFOC)", f"{fleet_data[selected_ship]['sfoc']} g/kWh")
+
+st.divider()
+
+# 5. الرسم البياني للأداء
+st.subheader("منحنى أداء المحرك (Engine Performance)")
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=[25, 50, 75, 85, 100], y=[175, 170, 168, 165, 169], name="Actual SFOC", line=dict(color='red')))
+fig.update_layout(xaxis_title="Engine Load (%)", yaxis_title="SFOC")
 st.plotly_chart(fig, use_container_width=True)
 
-st.success("النظام يعمل الآن بنجاح.")
+st.success("نظام VesselCore يعمل الآن بكامل كفاءته.")
