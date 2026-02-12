@@ -1,106 +1,101 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import imaplib, email, re, os
 from datetime import datetime
 
-# --- 1. الهوية البصرية السيادية (VesselCore Executive UI) ---
-st.set_page_config(page_title="VesselCore Strategic Intelligence", layout="wide")
-st.markdown("""
-    <style>
-    .main { background-color: #0b0e14; color: #e1e4e8; }
-    .stMetric { background-color: #1c2128; border: 1px solid #30363d; padding: 20px; border-radius: 12px; }
-    h1, h2, h3 { color: #58a6ff; font-weight: 700; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 1. الهوية السيادية (Master Command UI) ---
+st.set_page_config(page_title="VesselCore Absolute v14", layout="wide")
+st.markdown("""<style>.stMetric {background-color: #161b22; border: 1px solid #30363d; padding: 20px; border-radius: 12px;}</style>""", unsafe_allow_html=True)
 
-# --- 2. محرك الأرشفة والبيانات الثابتة ---
-DB_FILE = 'vessel_master_intel_v13.csv'
+# --- 2. محرك الأرشيف الصامت (Master Database) ---
+DB_FILE = 'vessel_master_intel_v14.csv'
 FLEET_SPECS = {
-    "NJ MOON": {"Engine": "MAN B&W 6S50MC-C", "Pitch": 4.82, "Cyl": 6},
-    "NJ MARS": {"Engine": "MAN B&W 6S60MC-C", "Pitch": 5.10, "Cyl": 6},
-    "NJ AIO": {"Engine": "Mitsubishi UEC", "Pitch": 4.95, "Cyl": 6},
-    "YARA J": {"Engine": "MAN B&W 5S50MC-C", "Pitch": 4.75, "Cyl": 5}
+    "NJ MOON": {"Pitch": 4.82, "Cyl": 6}, "NJ MARS": {"Pitch": 5.10, "Cyl": 6},
+    "NJ AIO": {"Pitch": 4.95, "Cyl": 6}, "YARA J": {"Pitch": 4.75, "Cyl": 5}
 }
 
-# --- 3. محرك المسح التقني الفائق (Ultra Tech Parser) ---
-def parse_vessel_intel(body):
+# --- 3. محرك المسح الدفاعي (Safe Technical Parser) ---
+def get_email_body(msg):
+    """فك تشفير محتوى الإيميل بأمان لمنع خطأ NoneType"""
+    try:
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    return part.get_payload(decode=True).decode(errors='ignore')
+        else:
+            return msg.get_payload(decode=True).decode(errors='ignore')
+    except: return ""
+    return ""
+
+def safe_parse(body):
+    """استخراج البيانات بدقة 100% وبدون تخمين"""
     data = {}
     try:
-        # استخراج الهوية والسرعة والملاحة
-        ship_match = re.search(r"M\.V\s+([A-Z\s]+)", body, re.I)
-        if ship_match: data['Ship'] = ship_match.group(1).strip()
-        data['Speed'] = float(re.search(r"Speed:\s*([\d\.]+)", body).group(1)) if re.search(r"Speed:\s*([\d\.]+)", body) else 0.0
-        data['RPM'] = float(re.search(r"R\.P\.M:\s*([\d\.]+)", body).group(1)) if re.search(r"R\.P\.M:\s*([\d\.]+)", body) else 0.0
-        data['Dist'] = float(re.search(r"Dis:\s*([\d\.]+)", body).group(1)) if re.search(r"Dis:\s*([\d\.]+)", body) else 0.0
+        ship_match = re.search(r"(NJ MOON|NJ MARS|NJ AIO|YARA J)", body, re.I)
+        if not ship_match: return None
         
-        # معادلة السليب الهندسية
-        # $$Slip\% = \frac{((RPM \times 60 \times 24 \times Pitch) / 1852) - Dist_{Obs}}{((RPM \times 60 \times 24 \times Pitch) / 1852)} \times 100$$
+        data['Ship'] = ship_match.group(1).upper()
+        data['Dist'] = float(re.search(r"Dis:\s*([\d\.]+)", body).group(1)) if re.search(r"Dis:\s*([\d\.]+)", body) else 0.0
+        data['RPM'] = float(re.search(r"R\.P\.M:\s*([\d\.]+)", body).group(1)) if re.search(r"R\.P\.M:\s*([\d\.]+)", body) else 0.0
+        data['Speed'] = float(re.search(r"Speed:\s*([\d\.]+)", body).group(1)) if re.search(r"Speed:\s*([\d\.]+)", body) else 0.0
+        data['FO'] = float(re.search(r"Fuel oil:.*?(\d+[\.]?\d*)", body, re.S).group(1)) if re.search(r"Fuel oil:", body) else 0.0
         data['Slip'] = float(re.search(r"Slip\s*([\-\d\.]+)%", body).group(1)) if re.search(r"Slip\s*([\-\d\.]+)%", body) else 0.0
         
-        # استهلاك الوقود والزيوت (Options الغنية)
-        data['ME_FO'] = float(re.search(r"Fuel oil:.*?(\d+[\.]?\d*)", body, re.S).group(1)) if re.search(r"Fuel oil:", body) else 0.0
-        data['AE_DO'] = float(re.search(r"Diesel oil:.*?(\d+[\.]?\d*)", body, re.S).group(1)) if re.search(r"Diesel oil:", body) else 0.0
-        data['Cyl_Oil'] = float(re.search(r"Cyl oil:.*?(\d+)", body, re.S).group(1)) if re.search(r"Cyl oil:", body) else 0.0
-        
-        # حرارات العادم (The Combustion Map)
         exh_match = re.search(r"EXHT TEMP\s*([\d\s]+)", body)
-        data['Exh_Temps'] = exh_match.group(1).strip().replace(" ", ",") if exh_match else "0,0,0,0,0,0"
-        
-        return data if 'Ship' in data else None
+        data['Exh'] = exh_match.group(1).strip().replace(" ", ",") if exh_match else "0,0,0,0,0,0"
+        return data
     except: return None
 
 # --- 4. واجهة التحكم (Command Sidebar) ---
 with st.sidebar:
-    st.title("🚢 VesselCore v13")
-    st.write(f"**CEO Control Panel**")
+    st.title("🚢 VesselCore v14")
     app_pwd = st.text_input("App Password (Marwankarroum3):", type="password")
     if st.button("🚀 تحديث الأسطول والتحليل الهندسي"):
-        # (محرك الربط مع Gmail مدمج هنا)
-        st.success("تم سحب البيانات من الإيميل وتحديث الأرشيف.")
+        try:
+            mail = imaplib.IMAP4_SSL("imap.gmail.com")
+            mail.login("marwankarroum3@gmail.com", app_pwd)
+            mail.select("inbox")
+            _, msgs = mail.search(None, '(OR SUBJECT "Noon Report" SUBJECT "DAILY REPORT")')
+            
+            all_data = []
+            for num in msgs[0].split()[-10:]:
+                _, d = mail.fetch(num, "(RFC822)")
+                msg = email.message_from_bytes(d[0][1])
+                body = get_email_body(msg)
+                parsed = safe_parse(body)
+                if parsed:
+                    parsed['Date'] = msg['Date']
+                    all_data.append(parsed)
+            
+            if all_data:
+                new_df = pd.DataFrame(all_data)
+                if os.path.exists(DB_FILE):
+                    old_df = pd.read_csv(DB_FILE)
+                    final_df = pd.concat([old_df, new_df]).drop_duplicates(subset=['Date', 'Ship'])
+                else: final_df = new_df
+                final_df.to_csv(DB_FILE, index=False)
+                st.success("تم تحديث الأرشيف بالبيانات الجديدة!")
+            else: st.warning("اتصلنا بالإيميل ولكن لم نجد تقارير بتنسيق مفهوم.")
+        except Exception as e: st.error(f"خطأ: {e}")
 
-# --- 5. لوحة القيادة (The Master Bridge) ---
-st.title("🌐 Fleet Strategic Analysis & Operations")
-
+# --- 5. لوحة القيادة (The Strategic Bridge) ---
+st.title("🌐 Operations & Strategic Analysis")
 if os.path.exists(DB_FILE):
-    df = pd.read_csv(DB_FILE)
-    ship = st.selectbox("Select Vessel:", list(FLEET_SPECS.keys()))
-    ship_df = df[df['Ship'].str.contains(ship.split()[-1])]
-    latest = ship_df.iloc[-1]
-
-    # --- القسم الأول: مؤشرات الأداء الحيوية ---
-    st.subheader("🚀 Navigation & Propulsion Metrics")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Current Speed", f"{latest['Speed']} kts")
-    c2.metric("Propeller Slip", f"{latest['Slip']}%", delta="Critical" if latest['Slip'] > 15 else "Optimal")
-    c3.metric("ME Fuel Cons.", f"{latest['ME_FO']} MT")
-    c4.metric("Cylinder Oil", f"{latest['Cyl_Oil']} L")
-
-    st.divider()
-
-    # --- القسم الثاني: تشخيص الماكينة والمولدات ---
-    tab_eng, tab_gen, tab_oil = st.tabs(["🔥 Engine Combustion", "⚡ Generator Loads", "⛽ Consumption Trends"])
-
-    with tab_eng:
-        st.subheader("Main Engine Exhaust Gas Thermal Balance")
-        temps = [int(x) for x in str(latest['Exh_Temps']).split(',')]
-        fig_exh = go.Figure(go.Bar(x=[f"Cyl {i+1}" for i in range(len(temps))], y=temps, marker_color='#3498db'))
-        fig_exh.update_layout(template="plotly_dark", title="Exhaust Gas Temp Profile (°C)")
-        st.plotly_chart(fig_exh, use_container_width=True)
-
-    with tab_gen:
-        st.subheader("Auxiliary Engine Performance (DO Cons)")
-        st.metric("Daily DO Consumption", f"{latest['AE_DO']} MT")
-        # 
-
-    with tab_oil:
-        st.subheader("Fuel & Oil Archiving")
-        fig_fuel = go.Figure(go.Scatter(x=ship_df['Date'], y=ship_df['ME_FO'], mode='lines+markers', name="ME Fuel"))
-        fig_fuel.update_layout(template="plotly_dark")
-        st.plotly_chart(fig_fuel, use_container_width=True)
-
-else:
-    st.warning("بانتظار جلب البيانات من بريد Marwankarroum3@gmail.com لتفعيل خيارات التحكم.")
-
-st.caption("© 2026 VesselCore Technical - Engineering Master Intelligence")
+    df_master = pd.read_csv(DB_FILE)
+    ship = st.selectbox("اختر السفينة للتحليل:", list(FLEET_SPECS.keys()))
+    ship_df = df_master[df_master['Ship'] == ship]
+    
+    if not ship_df.empty:
+        latest = ship_df.iloc[-1]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Distance", f"{latest['Dist']} NM")
+        c2.metric("Propeller Slip", f"{latest['Slip']}%", delta="Critical" if latest['Slip'] > 15 else "Normal")
+        c3.metric("Fuel Cons.", f"{latest['FO']} MT")
+        c4.metric("Engine RPM", latest['RPM'])
+        
+        st.subheader("🔥 Exhaust Temperatures & Combustion")
+        temps = [int(x) for x in str(latest['Exh']).split(',')]
+        st.plotly_chart(go.Figure(go.Bar(x=[f"Cyl {i+1}" for i in range(len(temps))], y=temps, marker_color='#3498db')), use_container_width=True)
+    else: st.warning(f"لا توجد بيانات مؤرشفة لـ {ship} حتى الآن.")
+else: st.info("بانتظار سحب أول تقرير لبناء الأرشيف.")
