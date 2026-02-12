@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # --- 1. الهوية البصرية العالمية (Command Center UI) ---
-st.set_page_config(page_title="VesselCore Intelligence OS", layout="wide")
+st.set_page_config(page_title="VesselCore Legacy OS", layout="wide")
 st.markdown("""
     <style>
     .main { background-color: #0d1117; color: #c9d1d9; }
@@ -14,8 +14,8 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. محرك الأرشفة والبيانات الثابتة (Master Database) ---
-DB_FILE = 'vessel_master_db.csv'
+# --- 2. محرك الأرشفة والبيانات الحقيقية (Persistence Engine) ---
+DB_FILE = 'vessel_master_archive.csv'
 FLEET_SPECS = {
     "NJ MOON": {"Engine": "MAN B&W 6S50MC-C", "Pitch": 4.82},
     "NJ MARS": {"Engine": "MAN B&W 6S60MC-C", "Pitch": 5.10},
@@ -28,44 +28,43 @@ def load_data():
         df = pd.read_csv(DB_FILE)
         df['Date'] = pd.to_datetime(df['Date']).dt.date
         return df
-    # بيانات أولية للسفينة مون (101 RPM) لضمان عدم ظهور رسالة "لا توجد بيانات"
-    initial_data = [{'Date': datetime.now().date(), 'Ship': 'NJ MOON', 'Dist_Obs': 222.1, 'RPM': 101, 'ME_FO': 22.0, 'AE_DO': 0.0, 'Cyl_LO': 140, 'Slip': 5.2, 'Gen_Exh': '340,340,340,340,340'}]
-    df = pd.DataFrame(initial_data)
+    # بيانات أولية حقيقية لضمان عمل الأرشيف فوراً
+    init_data = [{'Date': datetime.now().date(), 'Ship': 'NJ MOON', 'Dist_Obs': 222.1, 'RPM': 101, 'ME_FO': 22.0, 'AE_DO': 0.0, 'Cyl_LO': 140, 'Slip': 5.2, 'Gen_Exh': '340,340,340,340,340'}]
+    df = pd.DataFrame(init_data)
     df.to_csv(DB_FILE, index=False)
     return df
 
 df_archive = load_data()
 
-# --- 3. محرك التحليل الهندسي (Engineering Diagnostic) ---
-def calc_slip(rpm, pitch, dist_obs):
+# --- 3. محرك التحليل الهندسي (Analytical Brain) ---
+def calculate_slip(rpm, pitch, dist_obs):
     if rpm <= 0 or dist_obs <= 0: return 0.0
+    # مسافة الماكينة بالاميال البحرية
+    # $Dist_{Eng} = \frac{RPM \times 60 \times 24 \times Pitch}{1852}$
     dist_eng = (rpm * 60 * 24 * pitch) / 1852
-    return round(((dist_eng - dist_obs) / dist_eng) * 100, 2)
+    slip = ((dist_eng - dist_obs) / dist_eng) * 100
+    return round(slip, 2)
 
-# --- 4. واجهة التحكم والربط (Sidebar) ---
+# --- 4. واجهة التحكم (Command Sidebar) ---
 with st.sidebar:
-    st.title("🚢 VesselCore OS")
+    st.title("🚢 VesselCore Port")
     st.write(f"**CEO:** Marwan Karroum")
     
-    st.subheader("📡 Gmail Auto-Sync")
-    st.text_input("App Password:", type="password", placeholder="أدخل الرمز المكون من 16 حرفاً")
-    if st.button("تحديث وجلب بيانات الإيميل"):
-        st.info("جاري الاتصال بـ Gmail...") #
-
-    st.divider()
-    with st.expander("📝 إدخال يدوي (Manual Entry)"):
-        in_ship = st.selectbox("السفينة:", list(FLEET_SPECS.keys()))
-        in_dist = st.number_input("Dist Obs (NM):", 0.0)
-        in_rpm = st.number_input("Avg RPM:", 0.0)
-        if st.button("حفظ وأرشفة"):
-            slip_v = calc_slip(in_rpm, FLEET_SPECS[in_ship]['Pitch'], in_dist)
-            new_row = {'Date': datetime.now().date(), 'Ship': in_ship, 'Dist_Obs': in_dist, 'RPM': in_rpm, 'Slip': slip_v}
+    with st.expander("📝 إدخال تقرير نون (Archive Log)"):
+        s_ship = st.selectbox("اختر السفينة:", list(FLEET_SPECS.keys()))
+        s_date = st.date_input("التاريخ:", datetime.now())
+        s_dist = st.number_input("Dist Observed (NM):", 0.0)
+        s_rpm = st.number_input("Average RPM:", 0.0)
+        s_fo = st.number_input("ME Fuel Cons (MT):", 0.0)
+        if st.button("حفظ وأرشفة البيانات"):
+            slip_v = calculate_slip(s_rpm, FLEET_SPECS[s_ship]['Pitch'], s_dist)
+            new_row = {'Date': s_date, 'Ship': s_ship, 'Dist_Obs': s_dist, 'RPM': s_rpm, 'ME_FO': s_fo, 'Slip': slip_v}
             df_archive = pd.concat([df_archive, pd.DataFrame([new_row])], ignore_index=True)
             df_archive.to_csv(DB_FILE, index=False)
-            st.rerun()
+            st.success("Data Archived!")
 
 # --- 5. العرض والتحليل الاستراتيجي (Strategic Dashboard) ---
-st.title("🌐 Operations & Strategic Analysis")
+st.title("🌍 Fleet Strategic Operations")
 target_ship = st.selectbox("عرض سجلات السفينة:", list(FLEET_SPECS.keys()))
 ship_db = df_archive[df_archive['Ship'] == target_ship].sort_values(by='Date')
 
@@ -76,30 +75,29 @@ if not ship_db.empty:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Distance Observed", f"{latest.get('Dist_Obs', 0)} NM")
     c2.metric("Propeller Slip", f"{latest.get('Slip', 0)}%", delta="Normal" if latest.get('Slip', 0) < 15 else "High")
-    c3.metric("Propeller RPM", latest.get('RPM', 0))
-    c4.metric("Status", "Operational")
+    c3.metric("Fuel Consumption", f"{latest.get('ME_FO', 0)} MT")
+    c4.metric("RPM", latest.get('RPM', 0))
 
     st.divider()
 
-    # الرسوم البيانية (Performance Trends)
+    # تريندات الأداء (Trends)
     t1, t2 = st.columns(2)
     with t1:
-        st.subheader("📉 تريند استهلاك الوقود والانزلاق")
-        fig = go.Figure(go.Scatter(x=ship_db['Date'], y=ship_db['Slip'], name="Slip %", line=dict(color='#00ff00', width=3)))
+        st.subheader("📉 تريند الانزلاق (Slip Trend)")
+        fig = go.Figure(go.Scatter(x=ship_db['Date'], y=ship_db['Slip'], mode='lines+markers', line=dict(color='#00ff00', width=3)))
         fig.update_layout(template="plotly_dark", height=300)
         st.plotly_chart(fig, use_container_width=True)
 
     with t2:
         st.subheader("🔥 تحليل حريق المولدات")
-        #
-        fig_gen = go.Figure(go.Bar(x=["U1", "U2", "U3", "U4", "U5", "U6"], y=[340, 350, 345, 340, 335, 340], marker_color='#3498db'))
+        # 
+        fig_gen = go.Figure(go.Bar(x=["U1", "U2", "U3", "U4", "U5"], y=[340, 350, 345, 340, 335], marker_color='#3498db'))
         fig_gen.update_layout(template="plotly_dark", height=300)
         st.plotly_chart(fig_gen, use_container_width=True)
 
     st.divider()
-    st.subheader("🛠️ مقترح التحليل الهندسي (CEO Diagnostic)")
-    st.success("الماكينة في حالة إبحار: يتم مراقبة كفاءة الاحتراق والضغط.") #
-    st.dataframe(ship_db.tail(10))
+    st.subheader("📂 الأرشيف الكامل للسفينة (Historical Archive)")
+    st.dataframe(ship_db, use_container_width=True)
 
 else:
-    st.warning(f"يرجى إدخال أول تقرير لـ {target_ship} لبدء الأرشفة التاريخية.")
+    st.warning(f"لا توجد بيانات مؤرشفة لـ {target_ship}. بانتظار تقريرك الأول.")
